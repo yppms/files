@@ -7,8 +7,8 @@ import { Toaster } from "@/components/ui/toaster"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Pemberkasan PPDB 25/26 TKIT Miftahussalam",
-  description: "Tahap pengumpulan data dan dokumen anak didik 25/26",
+  title: "Pemberkasan 2627/26 TKIT Miftahussalam",
+  description: "Tahap pengumpulan data dan dokumen anak didik 26/27",
   icons: {
     icon: [
       { url: "/favicon.ico" },
