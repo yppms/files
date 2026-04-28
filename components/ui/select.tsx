@@ -35,7 +35,8 @@ function SelectValue({
 }: {
   placeholder?: string
 }) {
-  return null
+  if (!placeholder) return null
+  return <option value="" disabled>{placeholder}</option>
 }
 
 function SelectTrigger({
@@ -47,6 +48,8 @@ function SelectTrigger({
   ...props
 }: React.ComponentProps<'select'> & {
   size?: 'sm' | 'default'
+  value?: string
+  onValueChange?: (value: string) => void
 }) {
   return (
     <div className="relative">
@@ -58,7 +61,9 @@ function SelectTrigger({
           "data-[size=sm]:h-8",
           className,
         )}
-        {...(props as any)}
+        value={value}
+        onChange={(e) => onValueChange?.(e.target.value)}
+        {...props}
       >
         {children}
       </select>

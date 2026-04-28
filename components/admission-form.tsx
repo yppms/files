@@ -264,23 +264,23 @@ const FormSelect = memo(
         {helpText && (
           <p className="text-xs text-muted-foreground">{helpText}</p>
         )}
-        <Select value={value} onValueChange={onChange}>
+        <Select>
           <SelectTrigger
             id={id}
             className={cn(
               "transition-all duration-200 focus:ring-1 focus:ring-primary/30 focus:border-primary",
               error && "border-red-500 focus:ring-red-500 focus:border-red-500",
             )}
+            value={value}
+            onValueChange={onChange}
           >
             <SelectValue placeholder={placeholder} />
-          </SelectTrigger>
-          <SelectContent>
             {options.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
             ))}
-          </SelectContent>
+          </SelectTrigger>
         </Select>
         {error && <p className="text-xs text-red-500">{error}</p>}
       </div>
