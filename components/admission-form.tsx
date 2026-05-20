@@ -368,7 +368,6 @@ export function AdmissionForm() {
     source: "",
     sourceDetail: "",
     otherSource: "",
-    extracurricular: [] as string[],
     expectations: "",
     occupation: "",
     instagram: "",
@@ -586,10 +585,6 @@ export function AdmissionForm() {
       newErrors.sourceDetail = "Detail sumber informasi harus dipilih";
     } else if (formData.source === "other" && !formData.otherSource) {
       newErrors.otherSource = "Sumber informasi lainnya harus diisi";
-    }
-
-    if (formData.extracurricular.length < 3) {
-      newErrors.extracurricular = "Pilih minimal 3 ekstrakurikuler";
     }
 
     if (!formData.expectations) {
@@ -1628,148 +1623,7 @@ export function AdmissionForm() {
         </CardHeader>
         <CardContent className="space-y-4 sm:space-y-6 pt-3 sm:pt-5 px-3 sm:px-5">
           <div className="space-y-5">
-            <div
-              className="space-y-3"
-              data-error={errors.extracurricular ? true : undefined}
-            >
-              <Label
-                htmlFor="extracurricular"
-                className="block text-sm font-medium"
-              >
-                <span className="font-medium">
-                  Dari sembilan daftar ekstrakurikuler dibawah ini, menurut Ayah
-                  Bunda manakah yang paling dibutuhkan?
-                </span>
-              </Label>
-              <Notification type="warning">
-                <p>
-                  Urutan 1 untuk paling penting. Urutan 9 untuk paling tidak
-                  penting. Minimal memilih 3.
-                </p>
-              </Notification>
-              <div className="bg-white p-5 rounded-lg border border-primary-100 shadow-sm">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {[
-                    "Angklung",
-                    "Drumband",
-                    "English",
-                    "Gambar / Lukis",
-                    "Renang",
-                    "Robotic",
-                    "Tahfidz",
-                    "Tari",
-                    "Vokal",
-                  ].map((activity) => {
-                    const isSelected =
-                      formData.extracurricular.includes(activity);
-                    const priority = isSelected
-                      ? formData.extracurricular.indexOf(activity) + 1
-                      : null;
-
-                    // Define priority colors and styles
-                    const getPriorityStyles = (priority: number | null) => {
-                      if (!priority) return {};
-
-                      // Define distinct colors for top 3 priorities
-                      if (priority === 1) {
-                        return {
-                          background:
-                            "linear-gradient(135deg, #00bb9d 0%, #00a88e 100%)",
-                          color: "white",
-                          border: "2px solid #00bb9d",
-                        };
-                      } else if (priority === 2) {
-                        return {
-                          background:
-                            "linear-gradient(135deg, #33cfb7 0%, #00bb9d 100%)",
-                          color: "white",
-                          border: "2px solid #33cfb7",
-                        };
-                      } else if (priority === 3) {
-                        return {
-                          background:
-                            "linear-gradient(135deg, #66dbc9 0%, #33cfb7 100%)",
-                          color: "white",
-                          border: "2px solid #66dbc9",
-                        };
-                      } else {
-                        // Lower priorities get progressively lighter
-                        const lightness = Math.min(95, 75 + (priority - 3) * 5);
-                        return {
-                          background: `linear-gradient(135deg, hsl(168, 100%, ${lightness}%) 0%, hsl(168, 100%, ${lightness - 5}%) 100%)`,
-                          color: "#00826f",
-                          border: `2px solid hsl(168, 100%, ${lightness - 10}%)`,
-                        };
-                      }
-                    };
-
-                    const styles = getPriorityStyles(priority);
-
-                    return (
-                      <div
-                        key={activity}
-                        className={cn(
-                          "relative flex items-center justify-between p-4 rounded-lg transition-all duration-300",
-                          isSelected
-                            ? "shadow-md transform scale-[1.02]"
-                            : "border border-slate-200 hover:border-primary/30 hover:bg-slate-50",
-                          "cursor-pointer overflow-hidden",
-                        )}
-                        style={isSelected ? styles : {}}
-                        onClick={() => {
-                          if (isSelected) {
-                            // If already selected, remove it
-                            updateFormData(
-                              "extracurricular",
-                              formData.extracurricular.filter(
-                                (item) => item !== activity,
-                              ),
-                            );
-                          } else {
-                            // If not selected, add it
-                            updateFormData("extracurricular", [
-                              ...formData.extracurricular,
-                              activity,
-                            ]);
-                          }
-                        }}
-                      >
-                        <span
-                          className={cn(
-                            "font-medium",
-                            isSelected
-                              ? priority && priority <= 3
-                                ? "text-white"
-                                : ""
-                              : "",
-                          )}
-                        >
-                          {activity}
-                        </span>
-
-                        {isSelected && (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-primary text-base font-bold shadow-sm border-2 border-primary z-10">
-                            {priority}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                {errors.extracurricular && (
-                  <div className="flex items-center gap-2 mt-3 text-red-500">
-                    <AlertCircle className="h-4 w-4" />
-                    <p className="text-sm">{errors.extracurricular}</p>
-                  </div>
-                )}
-                <p className="text-sm text-muted-foreground mt-3 flex items-center gap-2">
-                  <Info className="h-4 w-4 text-slate-400" />
-                  Apabila ingin membatalkan urutan dapat meng-klik kembali item.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4 pt-4 border-t border-primary-100">
+            <div className="space-y-4">
               <FormSelect
                 id="source"
                 label="Darimana Ayah Bunda tahu dan akhirnya tertarik memilih TKIT Miftahussalam?"
