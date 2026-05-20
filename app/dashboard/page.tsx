@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { CardContent, CardDescription, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Loader2, Search } from "lucide-react"
+import { ArrowDownUp, Loader2, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -23,12 +23,83 @@ type Application = {
   class: string
 }
 
+function AppCard({
+  app,
+  formatDate,
+  getRelationLabel,
+  formatWhatsappNumber,
+  onClick,
+}: {
+  app: Application
+  formatDate: (d: string) => string
+  getRelationLabel: (r: string) => string
+  formatWhatsappNumber: (p: string) => string
+  onClick: () => void
+}) {
+  return (
+    <CustomCard
+      className="cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary-200 hover:bg-primary-50/30"
+      onClick={onClick}
+    >
+      <CustomCardHeader>
+        <div>
+          <CardTitle className="text-lg flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+            <span>{app.student_name}</span>
+            {app.student_nickname && (
+              <span className="text-sm text-primary-600">{app.student_nickname}</span>
+            )}
+          </CardTitle>
+          <CardDescription>Didaftarkan pada {formatDate(app.created_at)}</CardDescription>
+        </div>
+      </CustomCardHeader>
+      <CardContent className="pt-4 space-y-2">
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="text-muted-foreground">Wali:</div>
+          <div className="font-medium flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+            <span>{app.guardian_name}</span>
+            {app.guardian_nickname && (
+              <span className="text-sm text-primary-600">{app.guardian_nickname}</span>
+            )}
+          </div>
+
+          <div className="text-muted-foreground">Hubungan:</div>
+          <div className="font-medium">{getRelationLabel(app.relation)}</div>
+
+          <div className="text-muted-foreground">WhatsApp:</div>
+          <div className="font-medium flex items-center gap-2">
+            <span>{app.whatsapp}</span>
+            {app.whatsapp && (
+              <Button
+                asChild
+                size="sm"
+                variant="default"
+                className="h-8 w-8 p-0 ml-2 bg-green-100 hover:bg-green-200"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <a
+                  href={`https://wa.me/${formatWhatsappNumber(app.whatsapp)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Chat on WhatsApp"
+                >
+                  <WhatsappIcon className="h-5 w-5" />
+                </a>
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </CustomCard>
+  )
+}
+
 export default function Dashboard() {
   const { isAuthenticated } = useAuth()
   const router = useRouter()
   const [applications, setApplications] = useState<Application[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [sortMode, setSortMode] = useState<"class" | "newest" | "oldest">("class")
   const [error, setError] = useState<string | null>(null)
 
   // Function to fetch applications
@@ -90,6 +161,11 @@ export default function Dashboard() {
       app.guardian_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       app.whatsapp?.includes(searchTerm),
   )
+
+  const sortedApplications = [...filteredApplications].sort((a, b) => {
+    const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    return sortMode === "oldest" ? diff : -diff
+  })
 
   // Group applications by class
   const groupedApplications = filteredApplications.reduce(
@@ -197,19 +273,43 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          <div className="mb-4 flex justify-between items-center">
+          <div className="mb-4 flex justify-between items-center gap-2">
             <p className="text-sm text-muted-foreground">
               Menampilkan {filteredApplications.length} dari {applications.length} pendaftar
             </p>
-            <Button variant="outline" onClick={fetchApplications}>
-              Refresh Data
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSortMode(m => m === "class" ? "newest" : m === "newest" ? "oldest" : "class")}
+                className="flex items-center gap-1.5"
+              >
+                <ArrowDownUp size={14} />
+                {sortMode === "class" ? "Per Kelas" : sortMode === "newest" ? "Terbaru" : "Terlama"}
+              </Button>
+              <Button variant="outline" onClick={fetchApplications}>
+                Refresh Data
+              </Button>
+            </div>
           </div>
 
           {applications.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-lg">
               <p className="text-lg text-gray-500">Belum ada data pendaftaran</p>
               <p className="text-sm text-gray-400 mt-2">Data akan muncul setelah ada pendaftaran yang masuk</p>
+            </div>
+          ) : sortMode !== "class" ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {sortedApplications.map((app) => (
+                <AppCard
+                  key={app.id}
+                  app={app}
+                  formatDate={formatDate}
+                  getRelationLabel={getRelationLabel}
+                  formatWhatsappNumber={formatWhatsappNumber}
+                  onClick={() => handleCardClick(app.id)}
+                />
+              ))}
             </div>
           ) : (
             <div className="space-y-8">
@@ -223,60 +323,14 @@ export default function Dashboard() {
                   </h2>
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {groupedApplications[classType].map((app) => (
-                      <CustomCard
+                      <AppCard
                         key={app.id}
-                        className="cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary-200 hover:bg-primary-50/30"
+                        app={app}
+                        formatDate={formatDate}
+                        getRelationLabel={getRelationLabel}
+                        formatWhatsappNumber={formatWhatsappNumber}
                         onClick={() => handleCardClick(app.id)}
-                      >
-                        <CustomCardHeader>
-                          <div>
-                            <CardTitle className="text-lg flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
-                              <span>{app.student_name}</span>
-                              {app.student_nickname && (
-                                <span className="text-sm text-primary-600">{app.student_nickname}</span>
-                              )}
-                            </CardTitle>
-                            <CardDescription>Didaftarkan pada {formatDate(app.created_at)}</CardDescription>
-                          </div>
-                        </CustomCardHeader>
-                        <CardContent className="pt-4 space-y-2">
-                          <div className="grid grid-cols-2 gap-2 text-sm">
-                            <div className="text-muted-foreground">Wali:</div>
-                            <div className="font-medium flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
-                              <span>{app.guardian_name}</span>
-                              {app.guardian_nickname && (
-                                <span className="text-sm text-primary-600">{app.guardian_nickname}</span>
-                              )}
-                            </div>
-
-                            <div className="text-muted-foreground">Hubungan:</div>
-                            <div className="font-medium">{getRelationLabel(app.relation)}</div>
-
-                            <div className="text-muted-foreground">WhatsApp:</div>
-                            <div className="font-medium flex items-center gap-2">
-                              <span>{app.whatsapp}</span>
-                              {app.whatsapp && (
-                                <Button
-                                  asChild
-                                  size="sm"
-                                  variant="default"
-                                  className="h-8 w-8 p-0 ml-2 bg-green-100 hover:bg-green-200"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <a
-                                    href={`https://wa.me/${formatWhatsappNumber(app.whatsapp)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    aria-label="Chat on WhatsApp"
-                                  >
-                                    <WhatsappIcon className="h-5 w-5" />
-                                  </a>
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </CustomCard>
+                      />
                     ))}
                   </div>
                 </div>

@@ -49,7 +49,6 @@ type FormData = {
   source: string
   sourceDetail: string
   otherSource: string
-  extracurricular: string[]
   expectations: string
   occupation: string
   instagram: string
@@ -192,34 +191,7 @@ export async function submitAdmissionForm(formData: FormData) {
       }
     }
 
-    // Step 3: Insert extracurricular preferences
-    console.log("Step 3: Inserting extracurricular preferences...")
-    try {
-      if (formData.extracurricular.length > 0) {
-        const extracurricularData = formData.extracurricular.map((activity, index) => ({
-          application_id: applicationId,
-          activity,
-          priority: index + 1,
-        }))
-
-        const { error: extracurricularError } = await supabase
-          .from("extracurricular_preferences")
-          .insert(extracurricularData)
-
-        if (extracurricularError) {
-          throw new Error(`Error inserting extracurricular preferences: ${extracurricularError.message}`)
-        }
-      }
-    } catch (error) {
-      console.error("Error in Step 3 - Insert extracurricular preferences:", error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error inserting extracurricular preferences",
-        step: "insert_extracurricular",
-      }
-    }
-
-    // Step 4: Insert document records
+    // Step 3: Insert document records
     console.log("Step 4: Inserting document records...")
     try {
       const documents = []

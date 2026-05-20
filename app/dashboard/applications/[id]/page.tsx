@@ -56,13 +56,6 @@ type EmergencyContact = {
   relationship: string
 }
 
-type ExtracurricularPreference = {
-  id: string
-  application_id: string
-  activity: string
-  priority: number
-}
-
 type Document = {
   id: string
   application_id: string
@@ -77,7 +70,6 @@ export default function ApplicationDetail() {
   const router = useRouter()
   const [application, setApplication] = useState<Application | null>(null)
   const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([])
-  const [extracurricularPreferences, setExtracurricularPreferences] = useState<ExtracurricularPreference[]>([])
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -114,18 +106,6 @@ export default function ApplicationDetail() {
           console.error("Error fetching emergency contacts:", contactsError)
         } else {
           setEmergencyContacts(contactsData || [])
-        }
-
-        // Fetch extracurricular preferences
-        const { data: extracurricularData, error: extracurricularError } = await supabase
-          .from("extracurricular_preferences")
-          .select("*")
-          .eq("application_id", applicationId)
-
-        if (extracurricularError) {
-          console.error("Error fetching extracurricular preferences:", extracurricularError)
-        } else {
-          setExtracurricularPreferences(extracurricularData || [])
         }
 
         // Fetch documents only if hasDocumentAccess is true
@@ -493,27 +473,6 @@ export default function ApplicationDetail() {
                 </div>
               </div>
 
-              {/* Extracurricular Preferences */}
-              {extracurricularPreferences.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-sm font-medium mb-2">Preferensi Ekstrakurikuler</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                    {[...extracurricularPreferences]
-                      .sort((a, b) => a.priority - b.priority)
-                      .map((pref) => (
-                        <div
-                          key={pref.id}
-                          className="p-3 bg-primary-50 border border-primary-100 rounded-md flex items-center gap-3"
-                        >
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-                            {pref.priority}
-                          </div>
-                          <span className="font-medium">{pref.activity}</span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
             </CardContent>
           </CustomCard>
         </div>
