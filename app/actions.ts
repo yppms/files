@@ -74,6 +74,50 @@ function capitalizeName(name: string): string {
     .join(" ")
 }
 
+const ALLOWED_CLASSES = ["KB", "TK A", "TK B"]
+
+type BulkAction =
+  | { type: "setActive"; value: boolean }
+  | { type: "moveClass"; targetClass: string }
+
+// Bulk update students for the new academic year (graduate / promote).
+// Runs with the service-role client so it bypasses RLS — the anon client used
+// in the dashboard can read but not update, which would silently affect 0 rows.
+export async function bulkUpdateStudents(ids: string[], action: BulkAction) {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { success: false, error: "Tidak ada siswa yang dipilih" }
+  }
+
+  let patch: Record<string, unknown>
+  if (action.type === "setActive") {
+    patch = { is_active: !!action.value }
+  } else if (action.type === "moveClass" && ALLOWED_CLASSES.includes(action.targetClass)) {
+    patch = { class: action.targetClass }
+  } else {
+    return { success: false, error: "Aksi tidak valid" }
+  }
+
+  try {
+    const supabase = createServerSupabaseClient()
+    const { error, count } = await supabase
+      .from("applications")
+      .update(patch, { count: "exact" })
+      .in("id", ids)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath("/dashboard")
+    return { success: true, count: count ?? 0 }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Terjadi kesalahan",
+    }
+  }
+}
+
 // Improved server action with better error handling and smaller chunks
 export async function submitAdmissionForm(formData: FormData) {
   console.log("Starting form submission...")

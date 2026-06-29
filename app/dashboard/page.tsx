@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
+import { bulkUpdateStudents } from "@/app/actions"
 import { CardContent, CardDescription, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowDownUp, ArrowUpCircle, CheckSquare, Eye, EyeOff, Loader2, Search, UserX, X } from "lucide-react"
@@ -34,6 +35,7 @@ type ConfirmAction =
 type Application = {
   id: string
   created_at: string
+  updated_at: string
   student_name: string
   student_nickname: string
   guardian_name: string
@@ -166,8 +168,9 @@ export default function Dashboard() {
       const { data, error } = await supabase
         .from("applications")
         .select(`
-        id, 
-        created_at, 
+        id,
+        created_at,
+        updated_at,
         student_name,
         student_nickname,
         guardian_name,
@@ -177,7 +180,10 @@ export default function Dashboard() {
         class,
         is_active
       `)
-        .order("created_at", { ascending: false })
+        .order("updated_at", { ascending: false })
+        // Tiebreaker so any rows with identical timestamps keep a stable order
+        // across refetches (otherwise Postgres returns ties in random order).
+        .order("id", { ascending: false })
 
       console.log("Fetch response:", { data, error })
 
@@ -219,8 +225,10 @@ export default function Dashboard() {
   })
 
   const sortedApplications = [...filteredApplications].sort((a, b) => {
-    const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    return sortMode === "oldest" ? diff : -diff
+    const diff = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
+    if (diff !== 0) return sortMode === "oldest" ? diff : -diff
+    // Stable tiebreaker for identical timestamps so the order never reshuffles.
+    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0
   })
 
   // Group applications by class
@@ -321,15 +329,31 @@ export default function Dashboard() {
   }
 
   // ---- Bulk mutations ----
-  const applyBulk = async (patch: Partial<Application>, successMsg: string) => {
+  // Writes go through a server action (service-role client) because the anon
+  // client used for reads is blocked by RLS on UPDATE and would silently
+  // affect 0 rows while still returning 204.
+  const applyBulk = async (
+    action: Parameters<typeof bulkUpdateStudents>[1],
+    localPatch: Partial<Application>,
+    successMsg: string,
+  ) => {
     const ids = [...selected]
     if (ids.length === 0) return
     setActionLoading(true)
     try {
-      const { error } = await supabase.from("applications").update(patch).in("id", ids)
-      if (error) throw error
+      const res = await bulkUpdateStudents(ids, action)
+      if (!res.success) throw new Error(res.error)
+      if (!res.count) {
+        throw new Error(
+          "0 baris terupdate. Periksa kolom is_active sudah ada dan SUPABASE_SERVICE_ROLE_KEY terpasang.",
+        )
+      }
+      // Mirror the DB's updated_at bump so the "newest" sort matches a refetch.
+      const now = new Date().toISOString()
       setApplications((prev) =>
-        prev.map((app) => (selected.has(app.id) ? { ...app, ...patch } : app)),
+        prev.map((app) =>
+          selected.has(app.id) ? { ...app, ...localPatch, updated_at: now } : app,
+        ),
       )
       toast({ title: "Berhasil", description: successMsg })
       exitSelectMode()
@@ -349,11 +373,15 @@ export default function Dashboard() {
     if (!confirm) return
     const n = selected.size
     if (confirm.kind === "inactive") {
-      applyBulk({ is_active: false }, `${n} siswa ditandai tidak aktif (lulus).`)
+      applyBulk({ type: "setActive", value: false }, { is_active: false }, `${n} siswa ditandai tidak aktif (lulus).`)
     } else if (confirm.kind === "activate") {
-      applyBulk({ is_active: true }, `${n} siswa diaktifkan kembali.`)
+      applyBulk({ type: "setActive", value: true }, { is_active: true }, `${n} siswa diaktifkan kembali.`)
     } else {
-      applyBulk({ class: confirm.targetClass }, `${n} siswa dipindahkan ke ${confirm.targetClass}.`)
+      applyBulk(
+        { type: "moveClass", targetClass: confirm.targetClass },
+        { class: confirm.targetClass },
+        `${n} siswa dipindahkan ke ${confirm.targetClass}.`,
+      )
     }
   }
 
