@@ -4,12 +4,32 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { CardContent, CardDescription, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ArrowDownUp, Loader2, Search } from "lucide-react"
+import { ArrowDownUp, ArrowUpCircle, CheckSquare, Eye, EyeOff, Loader2, Search, UserX, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { useToast } from "@/components/ui/use-toast"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { CustomCard, CustomCardHeader } from "@/components/ui/custom-card"
 import WhatsappIcon from "@/components/icons/whatsapp"
+
+const CLASS_ORDER = ["KB", "TK A", "TK B"]
+
+type ConfirmAction =
+  | { kind: "inactive" }
+  | { kind: "activate" }
+  | { kind: "move"; targetClass: string }
 
 type Application = {
   id: string
@@ -21,6 +41,7 @@ type Application = {
   whatsapp: string
   relation: string
   class: string
+  is_active: boolean
 }
 
 function AppCard({
@@ -29,27 +50,51 @@ function AppCard({
   getRelationLabel,
   formatWhatsappNumber,
   onClick,
+  selectMode,
+  selected,
+  onToggleSelect,
 }: {
   app: Application
   formatDate: (d: string) => string
   getRelationLabel: (r: string) => string
   formatWhatsappNumber: (p: string) => string
   onClick: () => void
+  selectMode: boolean
+  selected: boolean
+  onToggleSelect: () => void
 }) {
   return (
     <CustomCard
-      className="cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary-200 hover:bg-primary-50/30"
-      onClick={onClick}
+      className={`cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary-200 hover:bg-primary-50/30 ${
+        selected ? "border-primary ring-2 ring-primary/40 bg-primary-50/40" : ""
+      } ${!app.is_active ? "opacity-60" : ""}`}
+      onClick={selectMode ? onToggleSelect : onClick}
     >
       <CustomCardHeader>
-        <div>
-          <CardTitle className="text-lg flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
-            <span>{app.student_name}</span>
-            {app.student_nickname && (
-              <span className="text-sm text-primary-600">{app.student_nickname}</span>
-            )}
-          </CardTitle>
-          <CardDescription>Didaftarkan pada {formatDate(app.created_at)}</CardDescription>
+        <div className="flex items-start gap-3">
+          {selectMode && (
+            <Checkbox
+              checked={selected}
+              onCheckedChange={onToggleSelect}
+              onClick={(e) => e.stopPropagation()}
+              className="mt-1"
+              aria-label={`Pilih ${app.student_name}`}
+            />
+          )}
+          <div className="flex-1">
+            <CardTitle className="text-lg flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+              <span>{app.student_name}</span>
+              {app.student_nickname && (
+                <span className="text-sm text-primary-600">{app.student_nickname}</span>
+              )}
+              {!app.is_active && (
+                <Badge variant="secondary" className="text-xs">
+                  Tidak Aktif
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription>Didaftarkan pada {formatDate(app.created_at)}</CardDescription>
+          </div>
         </div>
       </CustomCardHeader>
       <CardContent className="pt-4 space-y-2">
@@ -96,11 +141,19 @@ function AppCard({
 export default function Dashboard() {
   const { isAuthenticated } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
   const [applications, setApplications] = useState<Application[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortMode, setSortMode] = useState<"class" | "newest" | "oldest">("class")
   const [error, setError] = useState<string | null>(null)
+
+  // New-academic-year management
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [showInactive, setShowInactive] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [confirm, setConfirm] = useState<ConfirmAction | null>(null)
 
   // Function to fetch applications
   const fetchApplications = async () => {
@@ -119,9 +172,10 @@ export default function Dashboard() {
         student_nickname,
         guardian_name,
         guardian_nickname,
-        whatsapp, 
-        relation, 
-        class
+        whatsapp,
+        relation,
+        class,
+        is_active
       `)
         .order("created_at", { ascending: false })
 
@@ -133,7 +187,7 @@ export default function Dashboard() {
         return
       }
 
-      setApplications(data || [])
+      setApplications((data || []).map((a) => ({ ...a, is_active: a.is_active ?? true })))
     } catch (error) {
       console.error("Error in fetchApplications:", error)
       setError(error instanceof Error ? error.message : "Unknown error")
@@ -154,13 +208,15 @@ export default function Dashboard() {
     return null
   }
 
-  const filteredApplications = applications.filter(
-    (app) =>
+  const filteredApplications = applications.filter((app) => {
+    if (!showInactive && !app.is_active) return false
+    return (
       app.student_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       app.student_nickname?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       app.guardian_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.whatsapp?.includes(searchTerm),
-  )
+      app.whatsapp?.includes(searchTerm)
+    )
+  })
 
   const sortedApplications = [...filteredApplications].sort((a, b) => {
     const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -241,6 +297,94 @@ export default function Dashboard() {
     router.push(`/dashboard/applications/${applicationId}`)
   }
 
+  // ---- Selection helpers ----
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectMany = (ids: string[]) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      const allSelected = ids.every((id) => next.has(id))
+      ids.forEach((id) => (allSelected ? next.delete(id) : next.add(id)))
+      return next
+    })
+  }
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelected(new Set())
+  }
+
+  // ---- Bulk mutations ----
+  const applyBulk = async (patch: Partial<Application>, successMsg: string) => {
+    const ids = [...selected]
+    if (ids.length === 0) return
+    setActionLoading(true)
+    try {
+      const { error } = await supabase.from("applications").update(patch).in("id", ids)
+      if (error) throw error
+      setApplications((prev) =>
+        prev.map((app) => (selected.has(app.id) ? { ...app, ...patch } : app)),
+      )
+      toast({ title: "Berhasil", description: successMsg })
+      exitSelectMode()
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Gagal memperbarui",
+        description: e instanceof Error ? e.message : "Terjadi kesalahan",
+      })
+    } finally {
+      setActionLoading(false)
+      setConfirm(null)
+    }
+  }
+
+  const runConfirmedAction = () => {
+    if (!confirm) return
+    const n = selected.size
+    if (confirm.kind === "inactive") {
+      applyBulk({ is_active: false }, `${n} siswa ditandai tidak aktif (lulus).`)
+    } else if (confirm.kind === "activate") {
+      applyBulk({ is_active: true }, `${n} siswa diaktifkan kembali.`)
+    } else {
+      applyBulk({ class: confirm.targetClass }, `${n} siswa dipindahkan ke ${confirm.targetClass}.`)
+    }
+  }
+
+  // Guard: how many ALREADY-active students sit in the target class but are
+  // NOT part of this selection. Moving into a non-empty class merges cohorts.
+  const collisionCount = (targetClass: string) =>
+    applications.filter(
+      (a) => a.is_active && a.class === targetClass && !selected.has(a.id),
+    ).length
+
+  const confirmText = (): { title: string; desc: string; warn?: string } => {
+    if (!confirm) return { title: "", desc: "" }
+    const n = selected.size
+    if (confirm.kind === "inactive")
+      return {
+        title: "Tandai siswa tidak aktif?",
+        desc: `${n} siswa akan ditandai sebagai tidak aktif (lulus) dan disembunyikan dari daftar. Anda bisa menampilkannya kembali kapan saja.`,
+      }
+    if (confirm.kind === "activate")
+      return { title: "Aktifkan siswa?", desc: `${n} siswa akan ditandai aktif kembali.` }
+    const collision = collisionCount(confirm.targetClass)
+    return {
+      title: `Pindahkan ke kelas ${confirm.targetClass}?`,
+      desc: `Kelas dari ${n} siswa akan diubah menjadi "${confirm.targetClass}". Tindakan ini menimpa kelas mereka saat ini.`,
+      warn:
+        collision > 0
+          ? `⚠️ Kelas "${confirm.targetClass}" sudah berisi ${collision} siswa aktif lain. Memindahkan ke sana akan MENGGABUNGKAN dua angkatan dalam satu kelas. Jika ini kenaikan kelas tahunan, naikkan kelas tertinggi lebih dulu (TK B → lulus, lalu TK A → TK B, terakhir KB → TK A).`
+          : undefined,
+    }
+  }
+
   return (
     <div className="container mx-auto py-8 px-4">
       <h1 className="text-2xl font-bold mb-6">Dashboard Pendaftaran</h1>
@@ -273,11 +417,59 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
+          {selectMode && (
+            <div className="sticky top-2 z-20 mb-4 rounded-lg border border-primary-200 bg-primary-50/90 backdrop-blur px-4 py-3 shadow-sm">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-medium">
+                  {selected.size} siswa dipilih
+                </span>
+                <div className="flex flex-wrap items-center gap-2 ml-auto">
+                  <span className="text-sm text-muted-foreground flex items-center gap-1">
+                    <ArrowUpCircle size={14} />
+                    Pindah ke:
+                  </span>
+                  {CLASS_ORDER.map((c) => (
+                    <Button
+                      key={c}
+                      variant="outline"
+                      size="sm"
+                      disabled={selected.size === 0 || actionLoading}
+                      onClick={() => setConfirm({ kind: "move", targetClass: c })}
+                    >
+                      {c}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={selected.size === 0 || actionLoading}
+                    onClick={() => setConfirm({ kind: "inactive" })}
+                    className="flex items-center gap-1.5"
+                  >
+                    <UserX size={14} />
+                    Tandai Lulus / Tidak Aktif
+                  </Button>
+                  {showInactive && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={selected.size === 0 || actionLoading}
+                      onClick={() => setConfirm({ kind: "activate" })}
+                    >
+                      Aktifkan
+                    </Button>
+                  )}
+                  {actionLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="mb-4 flex justify-between items-center gap-2">
             <p className="text-sm text-muted-foreground">
               Menampilkan {filteredApplications.length} dari {applications.length} pendaftar
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               <Button
                 variant="outline"
                 size="sm"
@@ -287,7 +479,25 @@ export default function Dashboard() {
                 <ArrowDownUp size={14} />
                 {sortMode === "class" ? "Per Kelas" : sortMode === "newest" ? "Terbaru" : "Terlama"}
               </Button>
-              <Button variant="outline" onClick={fetchApplications}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowInactive((v) => !v)}
+                className="flex items-center gap-1.5"
+              >
+                {showInactive ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showInactive ? "Sembunyikan Tidak Aktif" : "Tampilkan Tidak Aktif"}
+              </Button>
+              <Button
+                variant={selectMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+                className="flex items-center gap-1.5"
+              >
+                {selectMode ? <X size={14} /> : <CheckSquare size={14} />}
+                {selectMode ? "Batal Pilih" : "Kelola Siswa"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={fetchApplications}>
                 Refresh Data
               </Button>
             </div>
@@ -308,33 +518,52 @@ export default function Dashboard() {
                   getRelationLabel={getRelationLabel}
                   formatWhatsappNumber={formatWhatsappNumber}
                   onClick={() => handleCardClick(app.id)}
+                  selectMode={selectMode}
+                  selected={selected.has(app.id)}
+                  onToggleSelect={() => toggleSelect(app.id)}
                 />
               ))}
             </div>
           ) : (
             <div className="space-y-8">
-              {sortedClassGroups.map((classType) => (
-                <div key={classType}>
-                  <h2 className="text-xl font-semibold mb-4 pb-2 border-b border-gray-200">
-                    Kelas: {classType}
-                    <span className="ml-2 text-sm font-normal text-gray-500">
-                      ({groupedApplications[classType].length} pendaftar)
-                    </span>
-                  </h2>
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {groupedApplications[classType].map((app) => (
-                      <AppCard
-                        key={app.id}
-                        app={app}
-                        formatDate={formatDate}
-                        getRelationLabel={getRelationLabel}
-                        formatWhatsappNumber={formatWhatsappNumber}
-                        onClick={() => handleCardClick(app.id)}
-                      />
-                    ))}
+              {sortedClassGroups.map((classType) => {
+                const groupIds = groupedApplications[classType].map((a) => a.id)
+                const allInGroupSelected = groupIds.every((id) => selected.has(id))
+                return (
+                  <div key={classType}>
+                    <h2 className="text-xl font-semibold mb-4 pb-2 border-b border-gray-200 flex items-center gap-3">
+                      {selectMode && (
+                        <Checkbox
+                          checked={allInGroupSelected}
+                          onCheckedChange={() => toggleSelectMany(groupIds)}
+                          aria-label={`Pilih semua di ${classType}`}
+                        />
+                      )}
+                      <span>
+                        Kelas: {classType}
+                        <span className="ml-2 text-sm font-normal text-gray-500">
+                          ({groupedApplications[classType].length} pendaftar)
+                        </span>
+                      </span>
+                    </h2>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {groupedApplications[classType].map((app) => (
+                        <AppCard
+                          key={app.id}
+                          app={app}
+                          formatDate={formatDate}
+                          getRelationLabel={getRelationLabel}
+                          formatWhatsappNumber={formatWhatsappNumber}
+                          onClick={() => handleCardClick(app.id)}
+                          selectMode={selectMode}
+                          selected={selected.has(app.id)}
+                          onToggleSelect={() => toggleSelect(app.id)}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -346,6 +575,32 @@ export default function Dashboard() {
           )}
         </>
       )}
+
+      <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmText().title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmText().desc}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {confirmText().warn && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {confirmText().warn}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                runConfirmedAction()
+              }}
+              disabled={actionLoading}
+            >
+              {actionLoading ? "Memproses..." : "Lanjutkan"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
